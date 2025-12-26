@@ -1,0 +1,93 @@
+{
+  "vit_base": {
+    "type": "vit",
+    "checkpoint": "./models/checkpoints/vit_vit_base_patch16_224_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 86567656,
+    "num_classes": 3812,
+    "config": {
+      "variant": "base",
+      "model_type": "vit",
+      "pretrained": true
+    }
+  },
+  "deit_base": {
+    "type": "vit",
+    "checkpoint": "./models/checkpoints/deit_deit_base_patch16_224_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 86567656,
+    "num_classes": 3812,
+    "config": {
+      "variant": "base",
+      "model_type": "deit",
+      "pretrained": true
+    }
+  },
+  "hybrid_convnext_tiny": {
+    "type": "hybrid",
+    "checkpoint": "./models/checkpoints/hybrid_convnext_tiny_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 32000000,
+    "num_classes": 3812,
+    "config": {
+      "backbone": "convnext_tiny",
+      "transformer_dim": 384,
+      "num_heads": 6,
+      "num_layers": 4
+    }
+  },
+  "fastervit_base": {
+    "type": "fastervit",
+    "checkpoint": "./models/checkpoints/fastervit2_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 28000000,
+    "num_classes": 3812,
+    "config": {
+      "variant": "base",
+      "embed_dim": 96,
+      "depths": [2, 2, 6, 2],
+      "trained_from_scratch": true
+    }
+  },
+  "mobilenetv3": {
+    "type": "lightweight",
+    "checkpoint": "./models/checkpoints/mobilenetv3_large_100_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 5483032,
+    "num_classes": 3812,
+    "config": {
+      "model": "mobilenetv3",
+      "variant": "large",
+      "pretrained": true
+    }
+  },
+  "convnext_tiny": {
+    "type": "lightweight",
+    "checkpoint": "./models/checkpoints/convnext_tiny_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 28589128,
+    "num_classes": 3812,
+    "config": {
+      "model": "convnext_tiny",
+      "pretrained": true
+    }
+  },
+  "tinyvit": {
+    "type": "lightweight",
+    "checkpoint": "./models/checkpoints/tiny_vit_5m_224_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 5400000,
+    "num_classes": 3812,
+    "config": {
+      "model": "tinyvit",
+      "pretrained": true
+    }
+  }
+}

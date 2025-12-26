@@ -1,0 +1,128 @@
+# ============================================
+# Font Detector - .gitignore
+# ============================================
+
+# ============================================
+# Dataset (19GB - DO NOT COMMIT)
+# ============================================
+font_project_dataset/
+*.zip
+*.tar.gz
+*.tar
+*.rar
+
+# ============================================
+# Model Checkpoints & Weights
+# ============================================
+models/checkpoints/*.pth
+models/checkpoints/*.pt
+models/checkpoints/*.keras
+models/checkpoints/*.h5
+*.onnx
+*.tflite
+
+# ============================================
+# Outputs & Logs
+# ============================================
+outputs/
+logs/
+*.log
+wandb/
+runs/
+tensorboard/
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ============================================
+# Virtual Environments
+# ============================================
+venv/
+ENV/
+env/
+.venv/
+.conda/
+
+# ============================================
+# IDE & Editors
+# ============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# Jupyter Notebooks
+# ============================================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ============================================
+# OS Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ============================================
+# Temporary Files
+# ============================================
+*.tmp
+*.temp
+*.bak
+*.backup
+.cache/
+*.cache
+
+# ============================================
+# Test & Coverage
+# ============================================
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# ============================================
+# Secrets & Config (if any)
+# ============================================
+.env
+.env.local
+*.pem
+*.key
+secrets.yaml
+credentials.json

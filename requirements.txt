@@ -1,0 +1,31 @@
+# Font Recognition System Requirements
+
+# Core ML
+timm>=0.9.0
+
+# Image Processing
+Pillow>=9.0.0
+opencv-python-headless>=4.7.0
+albumentations>=1.3.0
+
+# Text Detection (optional)
+python-doctr[torch]>=0.7.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Training Utilities
+tqdm>=4.65.0
+pyyaml>=6.0
+
+# UI
+streamlit>=1.28.0
+
+# Logging & Visualization
+tensorboard>=2.13.0
+matplotlib>=3.7.0
+
+# Development
+einops>=0.6.0
