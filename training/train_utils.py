@@ -19,14 +19,27 @@ import yaml
 logger = logging.getLogger(__name__)
 
 
-def set_seed(seed: int = 42):
-    """Set random seeds for reproducibility."""
+def set_seed(seed: int = 42, deterministic: bool = False):
+    """Set random seeds for reproducibility.
+    
+    Args:
+        seed: Random seed
+        deterministic: If True, use deterministic algorithms (slower but reproducible)
+                      If False, use faster non-deterministic algorithms
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    
+    if deterministic:
+        # Slower but fully reproducible
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    else:
+        # Faster - recommended for training
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True  # Auto-tune convolution algorithms
 
 
 def load_config(config_path: str = "./configs/config.yaml") -> Dict:
@@ -64,10 +77,10 @@ def create_data_loaders(
     train_dir: str,
     val_dir: str,
     batch_size: int = 32,
-    num_workers: int = 4,
+    num_workers: int = 8,
     image_size: Tuple[int, int] = (224, 224)
 ) -> Tuple[DataLoader, DataLoader, int]:
-    """Create training and validation data loaders."""
+    """Create training and validation data loaders with optimized settings."""
     
     train_transform = get_train_transforms(image_size)
     val_transform = get_val_transforms(image_size)
@@ -77,13 +90,16 @@ def create_data_loaders(
     
     num_classes = len(train_dataset.classes)
     
+    # Optimized DataLoader settings for faster training
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=True,
-        drop_last=True
+        drop_last=True,
+        persistent_workers=True if num_workers > 0 else False,  # Keep workers alive between epochs
+        prefetch_factor=2 if num_workers > 0 else None,  # Prefetch batches
     )
     
     val_loader = DataLoader(
@@ -91,7 +107,9 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=2 if num_workers > 0 else None,
     )
     
     logger.info(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")

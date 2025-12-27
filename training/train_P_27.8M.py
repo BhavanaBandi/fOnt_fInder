@@ -17,6 +17,14 @@ from pathlib import Path
 from datetime import datetime
 
 import torch
+
+# ============================================================================
+# PERFORMANCE OPTIMIZATIONS - Enable BEFORE importing other torch modules
+# ============================================================================
+torch.set_float32_matmul_precision('high')
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
@@ -48,9 +56,10 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scaler, epoch
     )
     
     for batch_idx, (images, labels) in enumerate(pbar):
-        images, labels = images.to(device), labels.to(device)
+        images = images.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
         
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         
         if scaler is not None:
             with torch.amp.autocast('cuda'):
@@ -93,7 +102,8 @@ def validate(model, val_loader, criterion, device):
     
     with torch.no_grad():
         for images, labels in pbar:
-            images, labels = images.to(device), labels.to(device)
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
             outputs = model(images)
             loss = criterion(outputs, labels)
             

@@ -17,6 +17,15 @@ from pathlib import Path
 from datetime import datetime
 
 import torch
+
+# ============================================================================
+# PERFORMANCE OPTIMIZATIONS - Enable BEFORE importing other torch modules
+# ============================================================================
+# TF32 (TensorFloat-32) for NVIDIA Ampere/Ada GPUs (RTX 30xx/40xx)
+# Provides ~3x speedup with negligible precision loss
+torch.set_float32_matmul_precision('high')
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
@@ -48,7 +57,7 @@ class FocalLoss(nn.Module):
 
 
 def train_epoch(model, train_loader, optimizer, criterion, device, scaler, epoch, total_epochs):
-    """Train for one epoch with tqdm progress bar."""
+    """Train for one epoch with tqdm progress bar and optimized data transfer."""
     model.train()
     total_loss = 0.0
     correct = 0
@@ -62,9 +71,12 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scaler, epoch
     )
     
     for batch_idx, (images, labels) in enumerate(pbar):
-        images, labels = images.to(device), labels.to(device)
+        # non_blocking=True allows async CPU->GPU transfer while GPU processes previous batch
+        images = images.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
         
-        optimizer.zero_grad()
+        # set_to_none=True is faster than zeroing gradients
+        optimizer.zero_grad(set_to_none=True)
         
         if scaler is not None:
             with torch.amp.autocast('cuda'):
@@ -80,6 +92,7 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scaler, epoch
             loss.backward()
             optimizer.step()
         
+        # Use .item() only for logging - it forces GPU sync but we need it for progress bar
         total_loss += loss.item()
         _, predicted = outputs.max(1)
         total += labels.size(0)
@@ -107,7 +120,8 @@ def validate(model, val_loader, criterion, device):
     
     with torch.no_grad():
         for images, labels in pbar:
-            images, labels = images.to(device), labels.to(device)
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
             outputs = model(images)
             loss = criterion(outputs, labels)
             
@@ -144,9 +158,11 @@ def main():
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=0.0005)
     parser.add_argument('--weight_decay', type=float, default=0.02)
-    parser.add_argument('--num_workers', type=int, default=4)
-    parser.add_argument('--use_amp', action='store_true', default=False,
-                        help='Use automatic mixed precision')
+    parser.add_argument('--num_workers', type=int, default=8)
+    parser.add_argument('--use_amp', action='store_true', default=True,
+                        help='Use automatic mixed precision (default: enabled)')
+    parser.add_argument('--no_amp', action='store_true', default=False,
+                        help='Disable automatic mixed precision')
     parser.add_argument('--patience', type=int, default=15)
     parser.add_argument('--seed', type=int, default=42)
     
@@ -164,9 +180,17 @@ def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # Handle AMP flag
+    use_amp = args.use_amp and not args.no_amp and device.type == 'cuda'
+    
     print(f"\n{'='*70}")
     print(f"Training Model_O_23.9M (ResNet + Transformer, ~23.9M params)")
     print(f"Device: {device}")
+    if device.type == 'cuda':
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"TF32 Enabled: {torch.backends.cuda.matmul.allow_tf32}")
+        print(f"cuDNN Benchmark: {torch.backends.cudnn.benchmark}")
     print(f"{'='*70}\n")
     
     # Create data loaders
@@ -208,8 +232,8 @@ def main():
     # Scheduler
     scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
     
-    # AMP scaler
-    scaler = torch.amp.GradScaler('cuda') if args.use_amp and device.type == 'cuda' else None
+    # AMP scaler (enabled by default for faster training)
+    scaler = torch.amp.GradScaler('cuda') if use_amp else None
     
     # Training
     save_dir = Path(args.save_dir)
@@ -225,7 +249,8 @@ def main():
     print(f"  Batch Size: {args.batch_size}")
     print(f"  Epochs: {args.epochs}")
     print(f"  Weight Decay: {args.weight_decay}")
-    print(f"  AMP: {args.use_amp}")
+    print(f"  AMP: {use_amp}")
+    print(f"  Num Workers: {args.num_workers}")
     print(f"{'='*70}\n")
     
     for epoch in range(args.epochs):
