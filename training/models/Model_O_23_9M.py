@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 
 def conv3x3(in_channels, out_channels, stride=1):
     """3x3 convolution with padding"""
@@ -95,7 +96,31 @@ class FontClassifier(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(d_model, num_classes)
 
-        # (Optional) Initialize parameters if desired, e.g., cls_token and pos_embed.
+        # Initialize weights properly - CRITICAL for training from scratch
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize weights using methods proven for Vision Transformers."""
+        # Initialize cls_token and pos_embed with truncated normal (std=0.02)
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        
+        # Initialize linear layers and conv layers
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.trunc_normal_(m.weight, std=0.02)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Conv2d):
+                # Kaiming init for conv layers (good for ReLU)
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+        
+        # Special init for classifier head - smaller std for stability
+        nn.init.trunc_normal_(self.classifier.weight, std=0.01)
+        nn.init.zeros_(self.classifier.bias)
 
     def forward(self, x):
         # CNN stem

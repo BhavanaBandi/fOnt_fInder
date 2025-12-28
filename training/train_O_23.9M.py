@@ -29,7 +29,7 @@ torch.backends.cudnn.allow_tf32 = True
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from tqdm import tqdm
 
 from train_utils import (
@@ -84,12 +84,17 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scaler, epoch
                 loss = criterion(outputs, labels)
             
             scaler.scale(loss).backward()
+            # Gradient clipping - critical for transformers
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
         else:
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
         
         # Use .item() only for logging - it forces GPU sync but we need it for progress bar
@@ -156,14 +161,18 @@ def main():
     parser.add_argument('--batch_size', type=int, default=64,
                         help='Batch size (64 for 16GB GPU, lightest model)')
     parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--lr', type=float, default=0.0005)
+    parser.add_argument('--lr', type=float, default=0.001,
+                        help='Peak learning rate (default: 0.001 for from-scratch training)')
+    parser.add_argument('--warmup_epochs', type=int, default=5,
+                        help='Number of warmup epochs')
     parser.add_argument('--weight_decay', type=float, default=0.02)
     parser.add_argument('--num_workers', type=int, default=8)
     parser.add_argument('--use_amp', action='store_true', default=True,
                         help='Use automatic mixed precision (default: enabled)')
     parser.add_argument('--no_amp', action='store_true', default=False,
                         help='Disable automatic mixed precision')
-    parser.add_argument('--patience', type=int, default=15)
+    parser.add_argument('--patience', type=int, default=0,
+                        help='Early stopping patience (0=disabled)')
     parser.add_argument('--seed', type=int, default=42)
     
     # Model hyperparameters
@@ -229,8 +238,23 @@ def main():
         weight_decay=args.weight_decay
     )
     
-    # Scheduler
-    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    # Scheduler with warmup - CRITICAL for transformer training
+    warmup_scheduler = LinearLR(
+        optimizer, 
+        start_factor=0.01,  # Start at 1% of LR
+        end_factor=1.0, 
+        total_iters=args.warmup_epochs
+    )
+    cosine_scheduler = CosineAnnealingLR(
+        optimizer, 
+        T_max=args.epochs - args.warmup_epochs,
+        eta_min=1e-6
+    )
+    scheduler = SequentialLR(
+        optimizer, 
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[args.warmup_epochs]
+    )
     
     # AMP scaler (enabled by default for faster training)
     scaler = torch.amp.GradScaler('cuda') if use_amp else None
@@ -251,6 +275,9 @@ def main():
     print(f"  Weight Decay: {args.weight_decay}")
     print(f"  AMP: {use_amp}")
     print(f"  Num Workers: {args.num_workers}")
+    print(f"  Warmup Epochs: {args.warmup_epochs}")
+    print(f"  Gradient Clipping: 1.0")
+    print(f"  Early Stopping: {'Disabled' if args.patience == 0 else f'{args.patience} epochs'}")
     print(f"{'='*70}\n")
     
     for epoch in range(args.epochs):
@@ -291,7 +318,8 @@ def main():
             print(f"  ★ New best model saved! Acc: {best_acc:.2f}%")
         else:
             patience_counter += 1
-            if patience_counter >= args.patience:
+            # Early stopping only if patience > 0
+            if args.patience > 0 and patience_counter >= args.patience:
                 print(f"\nEarly stopping at epoch {epoch+1}")
                 break
     

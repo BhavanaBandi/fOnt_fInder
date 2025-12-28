@@ -27,7 +27,7 @@ torch.backends.cudnn.allow_tf32 = True
 
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from tqdm import tqdm
 
 from train_utils import (
@@ -67,12 +67,15 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scaler, epoch
                 loss = criterion(outputs, labels)
             
             scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
         else:
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
         
         total_loss += loss.item()
@@ -138,12 +141,16 @@ def main():
     parser.add_argument('--batch_size', type=int, default=48,
                         help='Batch size (48 for 16GB GPU, lighter model)')
     parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--lr', type=float, default=0.0005)
+    parser.add_argument('--lr', type=float, default=0.001,
+                        help='Peak learning rate')
+    parser.add_argument('--warmup_epochs', type=int, default=5)
     parser.add_argument('--weight_decay', type=float, default=0.02)
-    parser.add_argument('--num_workers', type=int, default=4)
-    parser.add_argument('--use_amp', action='store_true', default=False,
-                        help='Use automatic mixed precision')
-    parser.add_argument('--patience', type=int, default=15)
+    parser.add_argument('--num_workers', type=int, default=8)
+    parser.add_argument('--use_amp', action='store_true', default=True,
+                        help='Use automatic mixed precision (default: enabled)')
+    parser.add_argument('--no_amp', action='store_true', default=False)
+    parser.add_argument('--patience', type=int, default=0,
+                        help='Early stopping patience (0=disabled)')
     parser.add_argument('--seed', type=int, default=42)
     
     # Model hyperparameters
@@ -164,9 +171,14 @@ def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    use_amp = args.use_amp and not args.no_amp and device.type == 'cuda'
+    
     print(f"\n{'='*70}")
     print(f"Training Model_P_27.8M (Hybrid CNN-ViT, ~27.8M params)")
     print(f"Device: {device}")
+    if device.type == 'cuda':
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"TF32 Enabled: {torch.backends.cuda.matmul.allow_tf32}")
     print(f"{'='*70}\n")
     
     # Create data loaders
@@ -209,11 +221,13 @@ def main():
         weight_decay=args.weight_decay
     )
     
-    # Scheduler
-    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    # Scheduler with warmup
+    warmup_scheduler = LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=args.warmup_epochs)
+    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs - args.warmup_epochs, eta_min=1e-6)
+    scheduler = SequentialLR(optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[args.warmup_epochs])
     
     # AMP scaler
-    scaler = torch.amp.GradScaler('cuda') if args.use_amp and device.type == 'cuda' else None
+    scaler = torch.amp.GradScaler('cuda') if use_amp else None
     
     # Training
     save_dir = Path(args.save_dir)
@@ -229,7 +243,10 @@ def main():
     print(f"  Batch Size: {args.batch_size}")
     print(f"  Epochs: {args.epochs}")
     print(f"  Weight Decay: {args.weight_decay}")
-    print(f"  AMP: {args.use_amp}")
+    print(f"  AMP: {use_amp}")
+    print(f"  Warmup Epochs: {args.warmup_epochs}")
+    print(f"  Gradient Clipping: 1.0")
+    print(f"  Early Stopping: {'Disabled' if args.patience == 0 else f'{args.patience} epochs'}")
     print(f"{'='*70}\n")
     
     for epoch in range(args.epochs):
@@ -270,7 +287,7 @@ def main():
             print(f"  ★ New best model saved! Acc: {best_acc:.2f}%")
         else:
             patience_counter += 1
-            if patience_counter >= args.patience:
+            if args.patience > 0 and patience_counter >= args.patience:
                 print(f"\nEarly stopping at epoch {epoch+1}")
                 break
     
