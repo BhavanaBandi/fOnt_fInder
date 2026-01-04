@@ -89,5 +89,21 @@
       "model": "tinyvit",
       "pretrained": true
     }
+  },
+  "fontnext_convnext_tiny": {
+    "type": "fontnext",
+    "checkpoint": "./models/checkpoints/fontnext_best.pth",
+    "accuracy": 0.0,
+    "top5_accuracy": 0.0,
+    "num_parameters": 37086404,
+    "num_classes": 3812,
+    "config": {
+      "backbone": "convnext_tiny",
+      "embed_dim": 384,
+      "depth": 4,
+      "num_heads": 6,
+      "mlp_ratio": 4.0,
+      "pool_sizes": [8, 8, 14, 7]
+    }
   }
 }

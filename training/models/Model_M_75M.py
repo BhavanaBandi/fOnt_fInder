@@ -333,12 +333,22 @@ class HybridCNNViTFontDetector(nn.Module):
             MBConvBlock(128, 128, kernel_size=3, stride=1, expand_ratio=6),
         )
         
-        # ============= Transition: CNN to Transformer =============
-        # Project features from 128 channels to embed_dim
+        # ============= Stage 3: CNN - Further downsampling =============
         # Input: [B, 128, 56, 56]
-        # Output: [B, 56*56, embed_dim] = [B, 3136, embed_dim]
+        # Output: [B, 256, 14, 14]
+        self.stage3 = nn.Sequential(
+            MBConvBlock(128, 192, kernel_size=3, stride=2, expand_ratio=6),  # -> 28x28
+            MBConvBlock(192, 192, kernel_size=3, stride=1, expand_ratio=6),
+            MBConvBlock(192, 256, kernel_size=3, stride=2, expand_ratio=6),  # -> 14x14
+            MBConvBlock(256, 256, kernel_size=3, stride=1, expand_ratio=6),
+        )
+        
+        # ============= Transition: CNN to Transformer =============
+        # Project features from 256 channels to embed_dim
+        # Input: [B, 256, 14, 14]
+        # Output: [B, 14*14, embed_dim] = [B, 196, embed_dim]
         self.transition = nn.Sequential(
-            nn.Conv2d(128, embed_dim, kernel_size=1),
+            nn.Conv2d(256, embed_dim, kernel_size=1),
             nn.BatchNorm2d(embed_dim),
         )
         
@@ -348,7 +358,7 @@ class HybridCNNViTFontDetector(nn.Module):
             in_channels=embed_dim,
             patch_size=1,  # No further patching; use CNN features directly
             embed_dim=embed_dim,
-            img_size=56,
+            img_size=14,
         )
         
         # ============= Stage 3-4: Vision Transformer =============
@@ -412,13 +422,16 @@ class HybridCNNViTFontDetector(nn.Module):
         # Stage 2: CNN multi-scale features
         x = self.stage2(x)  # [B, 128, 56, 56]
         
-        # Transition to transformer
-        x = self.transition(x)  # [B, embed_dim, 56, 56]
-        x = self.patch_embed(x)  # [B, 3136, embed_dim]
+        # Stage 3: Further CNN downsampling
+        x = self.stage3(x)  # [B, 256, 14, 14]
         
-        # Stage 3-4: Vision Transformer blocks
+        # Transition to transformer
+        x = self.transition(x)  # [B, embed_dim, 14, 14]
+        x = self.patch_embed(x)  # [B, 196, embed_dim]
+        
+        # Stage 4: Vision Transformer blocks
         for block in self.transformer_blocks:
-            x = block(x)  # [B, 3136, embed_dim]
+            x = block(x)  # [B, 196, embed_dim]
         
         # Global average pooling
         x = self.norm(x)

@@ -119,22 +119,89 @@ class FontInferenceEngine:
         sys.path.insert(0, str(Path(__file__).parent.parent / 'training'))
         
         num_classes = model_info.get('num_classes', 3812)
+        model_config = model_info.get('config', {}) or {}
         
         if model_type == 'vit':
-            from models.vit_model import ViTFontModel
-            return ViTFontModel(num_classes=num_classes)
+            from models.vit_model import ViTFontModel, DeiTFontModel
+            model_name = model_config.get('name')
+            model_variant = model_config.get('variant')
+            model_kind = model_config.get('model_type', 'vit')
+            if model_name is None:
+                if model_kind == 'deit' and model_variant:
+                    model_name = f"deit_{model_variant}_patch16_224"
+                elif model_variant:
+                    model_name = f"vit_{model_variant}_patch16_224"
+                else:
+                    model_name = "vit_base_patch16_224"
+
+            if model_kind == 'deit':
+                return DeiTFontModel(num_classes=num_classes, model_name=model_name, pretrained=False)
+            return ViTFontModel(num_classes=num_classes, model_name=model_name, pretrained=False)
         elif model_type == 'hybrid':
             from models.hybrid_model import HybridFontModel
-            return HybridFontModel(num_classes=num_classes)
-        elif model_type == 'mobilenet':
-            from models.lightweight_models import MobileNetV3FontModel
-            return MobileNetV3FontModel(num_classes=num_classes)
-        elif model_type == 'convnext':
-            from models.lightweight_models import ConvNeXtTinyFontModel
-            return ConvNeXtTinyFontModel(num_classes=num_classes)
+            backbone = model_config.get('backbone', 'convnext_tiny')
+            transformer_dim = model_config.get('transformer_dim', 384)
+            num_heads = model_config.get('num_heads', 6)
+            num_layers = model_config.get('num_layers', 4)
+            drop_rate = model_config.get('drop_rate', 0.1)
+            return HybridFontModel(
+                num_classes=num_classes,
+                backbone_name=backbone,
+                transformer_dim=transformer_dim,
+                num_heads=num_heads,
+                num_layers=num_layers,
+                pretrained_backbone=False,
+                drop_rate=drop_rate,
+            )
         elif model_type == 'fastervit':
             from models.fastervit_model import FasterViTFontModel
-            return FasterViTFontModel(num_classes=num_classes)
+            return FasterViTFontModel(
+                num_classes=num_classes,
+                embed_dim=model_config.get('embed_dim', 96),
+                depths=model_config.get('depths', [2, 2, 6, 2]),
+                num_heads=model_config.get('num_heads', [3, 6, 12, 24]),
+                window_size=model_config.get('window_size', 7),
+                drop_rate=model_config.get('drop_rate', 0.0),
+                use_carrier=model_config.get('use_carrier', True),
+            )
+        elif model_type == 'fontnext':
+            from models.fontnext_model import FontNeXtFontModel
+            return FontNeXtFontModel(
+                num_classes=num_classes,
+                backbone_name=model_config.get('backbone', 'convnext_tiny'),
+                embed_dim=model_config.get('embed_dim', 384),
+                depth=model_config.get('depth', 4),
+                num_heads=model_config.get('num_heads', 6),
+                mlp_ratio=model_config.get('mlp_ratio', 4.0),
+                pool_sizes=model_config.get('pool_sizes', [8, 8, 14, 7]),
+                pretrained_backbone=False,
+                drop_rate=model_config.get('drop_rate', 0.0),
+                attn_drop_rate=model_config.get('attn_drop_rate', 0.0),
+                drop_path_rate=model_config.get('drop_path_rate', 0.0),
+            )
+        elif model_type == 'lightweight':
+            import timm
+
+            # Registry may store either a timm model name (preferred) or a shorthand.
+            timm_name = model_config.get('name')
+            if timm_name is None:
+                model_key = model_config.get('model')
+                variant = model_config.get('variant')
+                if model_key == 'mobilenetv3' and variant == 'large':
+                    timm_name = 'mobilenetv3_large_100'
+                elif model_key == 'mobilenetv3' and variant == 'small':
+                    timm_name = 'mobilenetv3_small_100'
+                elif model_key == 'tinyvit':
+                    timm_name = 'tiny_vit_5m_224'
+                elif model_key == 'convnext_tiny':
+                    timm_name = 'convnext_tiny'
+                else:
+                    timm_name = model_key
+
+            if timm_name is None:
+                raise ValueError("Missing timm model name for lightweight model")
+
+            return timm.create_model(timm_name, pretrained=False, num_classes=num_classes)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
     
